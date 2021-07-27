@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
 void main() async {
@@ -39,7 +40,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> insertDBData() async{
     var random = Random();
-    var test = Test(text: random.nextInt(100).toString());
+    var test = Test(name: random.nextInt(100).toString(), text: random.nextInt(100).toString());
     await Future.wait([DBProvider.db.insertData(test)]);
     setState(() {});
   }
@@ -66,6 +67,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   future: queryDBData(),
                   builder: (context, snapshot){
                     if(snapshot.hasData){
+                      print(snapshot.data);
                       return ListView.builder(
                         itemCount: snapshot.data.length,
                         shrinkWrap: true,
@@ -97,8 +99,13 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 }
 
+const scripts = {
+  '2' : ['ALTER TABLE test ADD COLUMN name TEXT;'],
+  '3' : ['ALTER TABLE test ADD COLUMN test TEXT;'],
+};
 
 class DBProvider {
+
   DBProvider._();
 
   static final DBProvider db = DBProvider._();
@@ -116,16 +123,28 @@ class DBProvider {
 
   Future<Database> initDB() async {
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
+    SharedPreferences prefs = await SharedPreferences.getInstance();
     final path = join(documentsDirectory.path, 'test.db');
-    Database _db = await openDatabase(path, version: 1,
+    Database _db = await openDatabase(path, version: 3,
         onCreate: (Database db, int version) async {
           await db.execute('''
               CREATE TABLE test (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                text TEXT
+                name TEXT,
+                text TEXT,
+                test TEXT
               )
             ''');
-        });
+        },
+        onUpgrade: (Database db, int oldVersion, int newVersion) async {
+          for (var i = oldVersion + 1; i <= newVersion; i++) {
+            var queries = scripts[i.toString()];
+            for (String query in queries) {
+              await db.execute(query);
+            }
+          }
+        }
+      );
     return _db;
   }
 
@@ -149,12 +168,14 @@ class DBProvider {
 
 class Test {
   final int id;
+  final String name;
   final String text;
 
-  Test({this.id, this.text});
+  Test({this.id, this.name, this.text});
 
   Map<String, dynamic> insertToMap(){
     return {
+      'name': name,
       'text': text,
     };
   }
